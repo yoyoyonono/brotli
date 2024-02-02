@@ -10,6 +10,7 @@ target_sources(brotli INTERFACE
     ${CMAKE_CURRENT_LIST_DIR}/c/common/context.c
     ${CMAKE_CURRENT_LIST_DIR}/c/common/dictionary.c
     ${CMAKE_CURRENT_LIST_DIR}/c/common/platform.c
+    ${CMAKE_CURRENT_LIST_DIR}/c/common/shared_dictionary.c
     ${CMAKE_CURRENT_LIST_DIR}/c/common/transform.c
     ${CMAKE_CURRENT_LIST_DIR}/c/dec/bit_reader.c
     ${CMAKE_CURRENT_LIST_DIR}/c/dec/decode.c
