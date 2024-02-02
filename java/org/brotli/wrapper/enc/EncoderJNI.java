@@ -6,6 +6,7 @@
 
 package org.brotli.wrapper.enc;
 
+import org.brotli.enc.PreparedDictionary;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 
@@ -17,11 +18,58 @@ class EncoderJNI {
   private static native void nativePush(long[] context, int length);
   private static native ByteBuffer nativePull(long[] context);
   private static native void nativeDestroy(long[] context);
+  private static native boolean nativeAttachDictionary(long[] context, ByteBuffer dictionary);
+  private static native ByteBuffer nativePrepareDictionary(ByteBuffer dictionary, long type);
+  private static native void nativeDestroyDictionary(ByteBuffer dictionary);
 
   enum Operation {
     PROCESS,
     FLUSH,
     FINISH
+  }
+
+  private static class PreparedDictionaryImpl implements PreparedDictionary {
+    private ByteBuffer data;
+    /** Reference to (non-copied) LZ data. */
+    private ByteBuffer rawData;
+
+    private PreparedDictionaryImpl(ByteBuffer data, ByteBuffer rawData) {
+      this.data = data;
+    }
+
+    @Override
+    public ByteBuffer getData() {
+      return data;
+    }
+
+    @Override
+    protected void finalize() throws Throwable {
+      try {
+        ByteBuffer data = this.data;
+        this.data = null;
+        this.rawData = null;
+        nativeDestroyDictionary(data);
+      } finally {
+        super.finalize();
+      }
+    }
+  }
+
+  /**
+   * Prepares raw or serialized dictionary for being used by encoder.
+   *
+   * @param dictionary raw / serialized dictionary data; MUST be direct
+   * @param sharedDictionaryType dictionary data type
+   */
+  static PreparedDictionary prepareDictionary(ByteBuffer dictionary, int sharedDictionaryType) {
+    if (!dictionary.isDirect()) {
+      throw new IllegalArgumentException("only direct buffers allowed");
+    }
+    ByteBuffer dictionaryData = nativePrepareDictionary(dictionary, sharedDictionaryType);
+    if (dictionaryData == null) {
+      throw new IllegalStateException("OOM");
+    }
+    return new PreparedDictionaryImpl(dictionaryData, dictionary);
   }
 
   static class Wrapper {
@@ -46,6 +94,19 @@ class EncoderJNI {
       this.context[2] = 0;
       this.context[3] = 0;
       this.context[4] = 0;
+    }
+
+    boolean attachDictionary(ByteBuffer dictionary) {
+      if (!dictionary.isDirect()) {
+        throw new IllegalArgumentException("only direct buffers allowed");
+      }
+      if (context[0] == 0) {
+        throw new IllegalStateException("brotli decoder is already destroyed");
+      }
+      if (!fresh) {
+        throw new IllegalStateException("decoding is already started");
+      }
+      return nativeAttachDictionary(context, dictionary);
     }
 
     void push(Operation op, int length) {
@@ -111,7 +172,7 @@ class EncoderJNI {
     @Override
     protected void finalize() throws Throwable {
       if (context[0] != 0) {
-        /* TODO: log resource leak? */
+        /* TODO(eustas): log resource leak? */
         destroy();
       }
       super.finalize();

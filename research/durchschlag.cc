@@ -1,9 +1,9 @@
-#include "./durchschlag.h"
+#include "durchschlag.h"
 
 #include <algorithm>
 #include <exception>  /* terminate */
 
-#include "divsufsort.h"
+#include "third_party/libdivsufsort/include/divsufsort.h"
 
 /* Pointer to position in text. */
 typedef DurchschlagTextIdx TextIdx;
@@ -401,7 +401,7 @@ DurchschlagIndex durchschlag_index(const std::vector<uint8_t>& data) {
   std::vector<TextIdx> isa(total);
   for (TextIdx i = 0; i < total; ++i) isa[sa[i]] = i;
 
-  // TODO: borrowed -> unknown efficiency.
+  // TODO(eustas): borrowed -> unknown efficiency.
   std::vector<TextIdx> lcp(total);
   TextIdx k = 0;
   lcp[total - 1] = 0;

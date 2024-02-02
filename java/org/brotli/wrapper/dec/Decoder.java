@@ -50,6 +50,12 @@ public class Decoder {
     throw new IOException(message);
   }
 
+  void attachDictionary(ByteBuffer dictionary) throws IOException {
+    if (!decoder.attachDictionary(dictionary)) {
+      fail("failed to attach dictionary");
+    }
+  }
+
   public void enableEagerOutput() {
     this.eager = true;
   }
@@ -132,16 +138,14 @@ public class Decoder {
     source.close();
   }
 
-  /**
-   * Decodes the given data buffer.
-   */
-  public static byte[] decompress(byte[] data) throws IOException {
-    DecoderJNI.Wrapper decoder = new DecoderJNI.Wrapper(data.length);
+  /** Decodes the given data buffer starting at offset till length. */
+  public static byte[] decompress(byte[] data, int offset, int length) throws IOException {
+    DecoderJNI.Wrapper decoder = new DecoderJNI.Wrapper(length);
     ArrayList<byte[]> output = new ArrayList<byte[]>();
     int totalOutputSize = 0;
     try {
-      decoder.getInputBuffer().put(data);
-      decoder.push(data.length);
+      decoder.getInputBuffer().put(data, offset, length);
+      decoder.push(length);
       while (decoder.getStatus() != DecoderJNI.Status.DONE) {
         switch (decoder.getStatus()) {
           case OK:
@@ -156,6 +160,15 @@ public class Decoder {
             totalOutputSize += chunk.length;
             break;
 
+          case NEEDS_MORE_INPUT:
+            // Give decoder a chance to process the remaining of the buffered byte.
+            decoder.push(0);
+            // If decoder still needs input, this means that stream is truncated.
+            if (decoder.getStatus() == DecoderJNI.Status.NEEDS_MORE_INPUT) {
+              throw new IOException("corrupted input");
+            }
+            break;
+
           default:
             throw new IOException("corrupted input");
         }
@@ -167,11 +180,16 @@ public class Decoder {
       return output.get(0);
     }
     byte[] result = new byte[totalOutputSize];
-    int offset = 0;
+    int resultOffset = 0;
     for (byte[] chunk : output) {
-      System.arraycopy(chunk, 0, result, offset, chunk.length);
-      offset += chunk.length;
+      System.arraycopy(chunk, 0, result, resultOffset, chunk.length);
+      resultOffset += chunk.length;
     }
     return result;
+  }
+
+  /** Decodes the given data buffer. */
+  public static byte[] decompress(byte[] data) throws IOException {
+    return decompress(data, 0, data.length);
   }
 }
